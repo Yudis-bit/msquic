@@ -5,8 +5,11 @@
 
 --*/
 
+#define QUIC_API_ENABLE_INSECURE_FEATURES 1
+#define QUIC_API_ENABLE_PREVIEW_FEATURES 1
 #include "quic_platform.h"
 #include "quic_datapath.h"
+#include "msquic.h"
 
 extern "C" {
 struct QUIC_CONNECTION;
@@ -27,13 +30,19 @@ BOOLEAN QuicLookupAddLocalCid(
 void QuicLookupRemoveLocalCids(QUIC_LOOKUP* Lookup, QUIC_CONNECTION* Connection);
 QUIC_STATUS QuicTimerWheelInitialize(QUIC_TIMER_WHEEL* TimerWheel);
 void QuicTimerWheelUninitialize(QUIC_TIMER_WHEEL* TimerWheel);
+QUIC_STATUS QUIC_API MsQuicRegistrationOpen(
+    const QUIC_REGISTRATION_CONFIG* Config, HQUIC* Registration);
+void QUIC_API MsQuicRegistrationClose(HQUIC Registration);
+QUIC_STATUS QUIC_API MsQuicConnectionOpen(
+    HQUIC Registration, QUIC_CONNECTION_CALLBACK_HANDLER Handler,
+    void* Context, HQUIC* Connection);
+void QUIC_API MsQuicConnectionClose(HQUIC Connection);
 }
 
 #include "main.h"
 
 class RetireCidTest : public ::testing::Test {
 protected:
-    const QUIC_API_TABLE* Api = nullptr;
     HQUIC Registration = nullptr;
     QUIC_CONNECTION* Connection = nullptr;
     QUIC_WORKER Worker = {};
@@ -62,10 +71,9 @@ protected:
     {
         QuicLookupInitialize(&Binding.Lookup);
         TEST_QUIC_SUCCEEDED(QuicTimerWheelInitialize(&Worker.TimerWheel));
-        TEST_QUIC_SUCCEEDED(MsQuicOpen2(&Api));
-        TEST_QUIC_SUCCEEDED(Api->RegistrationOpen(nullptr, &Registration));
+        TEST_QUIC_SUCCEEDED(MsQuicRegistrationOpen(nullptr, &Registration));
         HQUIC Handle = nullptr;
-        TEST_QUIC_SUCCEEDED(Api->ConnectionOpen(Registration, Callback, this, &Handle));
+        TEST_QUIC_SUCCEEDED(MsQuicConnectionOpen(Registration, Callback, this, &Handle));
         Connection = reinterpret_cast<QUIC_CONNECTION*>(Handle);
 
         // Drive frame processing on this thread without starting a socket or worker.
@@ -88,13 +96,10 @@ protected:
         if (Connection != nullptr) {
             QuicLookupRemoveLocalCids(&Binding.Lookup, Connection);
             Connection->Paths[0].Binding = nullptr;
-            Api->ConnectionClose(reinterpret_cast<HQUIC>(Connection));
+            MsQuicConnectionClose(reinterpret_cast<HQUIC>(Connection));
         }
         if (Registration != nullptr) {
-            Api->RegistrationClose(Registration);
-        }
-        if (Api != nullptr) {
-            MsQuicClose(Api);
+            MsQuicRegistrationClose(Registration);
         }
         QuicTimerWheelUninitialize(&Worker.TimerWheel);
         QuicLookupUninitialize(&Binding.Lookup);
