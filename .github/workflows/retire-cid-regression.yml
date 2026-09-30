@@ -1,0 +1,102 @@
+name: Retire CID regression
+
+on:
+  push:
+    branches: [test/retire-cid-finish]
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/microsoft/msquic/linux-build-xcomp:ubuntu-24.04-cross
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set ownership
+        run: chown -R $(id -u):$(id -g) "$PWD"
+      - name: Prepare machine
+        shell: pwsh
+        run: scripts/prepare-machine.ps1 -ForContainerBuild -Tls quictls -InstallCodeCoverage
+      - name: Build tests with coverage
+        shell: pwsh
+        run: scripts/build.ps1 -Config Debug -Platform linux -Arch x64 -Tls quictls -DisablePerf -DisableLogs -OneBranch -EnableGCov
+      - name: Run receive-path regression tests
+        run: artifacts/bin/linux/x64_Debug_quictls/msquiccoretest --gtest_filter='*RetireCidTest*' --gtest_output=xml:retire-cid-tests.xml
+      - name: Measure regression coverage
+        run: gcovr --root . --filter 'src/core/connection.c' --json coverage.json --cobertura coverage.xml --txt
+      - name: Run all core tests
+        run: artifacts/bin/linux/x64_Debug_quictls/msquiccoretest --gtest_output=xml:core-tests.xml
+      - name: Check regression sensitivity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp src/core/connection.c connection.original.c
+          trap 'cp connection.original.c src/core/connection.c' EXIT
+          for mutation in sequence current-cid error-code; do
+            cp connection.original.c src/core/connection.c
+            python3 - "$mutation" <<'PY'
+          import pathlib, sys
+          path = pathlib.Path('src/core/connection.c')
+          source = path.read_text()
+          edits = {
+              'sequence': ('if (Frame.Sequence >= Connection->NextSourceCidSequenceNumber)', 'if (FALSE)'),
+              'current-cid': ('if (SourceCid != NULL &&\n                Packet->DestCidLen == SourceCid->CID.Length', 'if (FALSE && SourceCid != NULL &&\n                Packet->DestCidLen == SourceCid->CID.Length'),
+              'error-code': ('QuicConnTransportError(Connection, QUIC_ERROR_PROTOCOL_VIOLATION);', 'QuicConnTransportError(Connection, QUIC_ERROR_INTERNAL_ERROR);'),
+          }
+          before, after = edits[sys.argv[1]]
+          assert before in source
+          if sys.argv[1] == 'error-code':
+              start = source.index('case QUIC_FRAME_RETIRE_CONNECTION_ID: {')
+              end = source.index('case QUIC_FRAME_PATH_CHALLENGE:', start)
+              source = source[:start] + source[start:end].replace(before, after) + source[end:]
+          else:
+              source = source.replace(before, after, 1)
+          path.write_text(source)
+          PY
+            cmake --build build/linux/x64_quictls --parallel 2 > "build-$mutation.log" 2>&1
+            set +e
+            artifacts/bin/linux/x64_Debug_quictls/msquiccoretest --gtest_filter='*RetireCidTest*' > "mutation-$mutation.log" 2>&1
+            result=$?
+            set -e
+            cat "mutation-$mutation.log"
+            test "$result" -eq 1
+            grep -q '\[  FAILED  \]' "mutation-$mutation.log"
+          done
+          cp connection.original.c src/core/connection.c
+          cmake --build build/linux/x64_quictls --parallel 2
+          artifacts/bin/linux/x64_Debug_quictls/msquiccoretest --gtest_filter='*RetireCidTest*'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-retire-cid-results
+          path: |
+            *tests.xml
+            coverage.json
+            coverage.xml
+            mutation-*.log
+            build-*.log
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare machine
+        shell: pwsh
+        run: scripts/prepare-machine.ps1 -ForBuild -Tls schannel
+      - name: Build tests
+        shell: pwsh
+        run: scripts/build.ps1 -Config Debug -Platform windows -Arch x64 -Tls schannel -DisablePerf -DisableLogs -OneBranch
+      - name: Run all core tests
+        shell: pwsh
+        run: |
+          & artifacts/bin/windows/x64_Debug_schannel/msquiccoretest.exe --gtest_output=xml:core-tests.xml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-retire-cid-results
+          path: core-tests.xml
