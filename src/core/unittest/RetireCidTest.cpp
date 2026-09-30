@@ -199,6 +199,23 @@ TEST_F(RetireCidTest, AcceptOtherCidAndRepeatedRetirement)
     EXPECT_EQ(2u, Binding.Lookup.CidCount);
 }
 
+TEST_F(RetireCidTest, RejectZeroLengthPacketDestinationCid)
+{
+    QuicLookupRemoveLocalCids(&Binding.Lookup, Connection);
+    ASSERT_TRUE(AddSourceCid(0, InitialCidBytes, 0));
+    Connection->NextSourceCidSequenceNumber = 1;
+    Packet.DestCid = nullptr;
+    Packet.DestCidLen = 0;
+
+    auto* Cid = FindSourceCid(0);
+    ASSERT_NE(nullptr, Cid);
+    ASSERT_FALSE(Receive(0));
+    ExpectProtocolViolation();
+    EXPECT_EQ(Cid, FindSourceCid(0));
+    EXPECT_TRUE(Cid->CID.IsInLookupTable);
+    EXPECT_EQ(1u, Binding.Lookup.CidCount);
+}
+
 TEST_F(RetireCidTest, AcceptOtherCidWithMatchingPrefix)
 {
     QuicLookupRemoveLocalCids(&Binding.Lookup, Connection);
