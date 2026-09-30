@@ -92,7 +92,7 @@ jobs:
       - name: Build tests
         shell: pwsh
         run: |
-          cmake -S . -B build/windows/x64_schannel -G "Visual Studio 17 2022" -A x64 -DQUIC_TLS_LIB=schannel -DQUIC_BUILD_TEST=ON -DQUIC_BUILD_PERF=OFF -DQUIC_BUILD_TOOLS=OFF -DQUIC_OUTPUT_DIR="$PWD/artifacts/bin/windows/x64_Debug_schannel"
+          cmake -S . -B build/windows/x64_schannel -G "Visual Studio 17 2022" -A x64 -DQUIC_TLS_LIB=schannel -DQUIC_BUILD_TEST=ON -DQUIC_BUILD_PERF=OFF -DQUIC_BUILD_TOOLS=OFF -DCMAKE_C_FLAGS=/wd28020 -DQUIC_OUTPUT_DIR="$PWD/artifacts/bin/windows/x64_Debug_schannel"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build build/windows/x64_schannel --config Debug --target msquiccoretest --parallel 2
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
