@@ -26,7 +26,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Collect RETIRE_CONNECTION_ID coverage
         shell: pwsh
-        run: scripts/run-gtest.ps1 -Path "artifacts/bin/windows/x64_Debug_schannel/msquiccoretest.exe" -Filter "*RetireCidTest*" -IsolationMode Batch -CodeCoverage -NoProgress
+        run: scripts/run-gtest.ps1 -Path "$PWD/artifacts/bin/windows/x64_Debug_schannel/msquiccoretest.exe" -Filter "*RetireCidTest*" -IsolationMode Batch -CodeCoverage -NoProgress
       - name: Export coverage
         shell: pwsh
         run: |
