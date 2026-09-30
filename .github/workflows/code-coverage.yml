@@ -73,11 +73,16 @@ jobs:
         $ManifestPath = ".\src\manifest\MsQuicEtw.man"
         wevtutil.exe um $ManifestPath
         wevtutil.exe im $ManifestPath /rf:$($MsQuicDll) /mf:$($MsQuicDll)
+    - name: RETIRE_CONNECTION_ID coverage
+      if: ${{ !matrix.vec.xdp }}
+      shell: pwsh
+      timeout-minutes: 5
+      run: scripts/run-gtest.ps1 -Path "artifacts/bin/windows/${{ matrix.vec.arch }}_${{ matrix.vec.config }}_${{ matrix.vec.tls }}/msquiccoretest.exe" -Filter "*RetireCidTest*" -IsolationMode Batch -CodeCoverage -NoProgress
     - name: Test
       shell: pwsh
       timeout-minutes: 120
       continue-on-error: true
-      run: scripts/test.ps1 -NoProgress -IsolationMode Batch -CodeCoverage -Config ${{ matrix.vec.config }} -Arch ${{ matrix.vec.arch }} -Tls ${{ matrix.vec.tls }} -LogProfile Full.Light ${{ matrix.vec.xdp && '-UseXdp' }} ${{ matrix.vec.xdp }} ${{ matrix.vec.qtip }}
+      run: scripts/test.ps1 -NoProgress -IsolationMode Batch -SkipUnitTests -CodeCoverage -Config ${{ matrix.vec.config }} -Arch ${{ matrix.vec.arch }} -Tls ${{ matrix.vec.tls }} -LogProfile Full.Light ${{ matrix.vec.xdp && '-UseXdp' }} ${{ matrix.vec.xdp }} ${{ matrix.vec.qtip }}
     - name: Upload Results
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
