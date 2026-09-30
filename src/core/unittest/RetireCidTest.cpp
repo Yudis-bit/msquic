@@ -37,6 +37,7 @@ QUIC_STATUS QUIC_API MsQuicConnectionOpen(
     HQUIC Registration, QUIC_CONNECTION_CALLBACK_HANDLER Handler,
     void* Context, HQUIC* Connection);
 void QUIC_API MsQuicConnectionClose(HQUIC Connection);
+void MsQuicLibraryLazyUninitialize(void);
 }
 
 #include "main.h"
@@ -54,6 +55,7 @@ protected:
     uint32_t ShutdownCount = 0;
     QUIC_STATUS ShutdownStatus = QUIC_STATUS_SUCCESS;
     QUIC_UINT62 ShutdownError = QUIC_ERROR_NO_ERROR;
+    BOOLEAN WasLazyInitComplete = FALSE;
 
     static QUIC_STATUS QUIC_API Callback(
         HQUIC, void* Context, QUIC_CONNECTION_EVENT* Event)
@@ -69,6 +71,7 @@ protected:
 
     void SetUp() override
     {
+        WasLazyInitComplete = MsQuicLib.LazyInitComplete;
         QuicLookupInitialize(&Binding.Lookup);
         TEST_QUIC_SUCCEEDED(QuicTimerWheelInitialize(&Worker.TimerWheel));
         TEST_QUIC_SUCCEEDED(MsQuicRegistrationOpen(nullptr, &Registration));
@@ -100,6 +103,9 @@ protected:
         }
         if (Registration != nullptr) {
             MsQuicRegistrationClose(Registration);
+        }
+        if (!WasLazyInitComplete && MsQuicLib.LazyInitComplete) {
+            MsQuicLibraryLazyUninitialize();
         }
         QuicTimerWheelUninitialize(&Worker.TimerWheel);
         QuicLookupUninitialize(&Binding.Lookup);
