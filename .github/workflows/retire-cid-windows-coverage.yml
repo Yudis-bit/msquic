@@ -1,0 +1,44 @@
+name: Retire CID Windows coverage
+
+on:
+  push:
+    branches: [test/retire-cid-win-coverage]
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prepare machine
+        shell: pwsh
+        run: scripts/prepare-machine.ps1 -ForBuild -Tls schannel -InstallCodeCoverage
+      - name: Build tests
+        shell: pwsh
+        run: |
+          cmake -S . -B build/windows/x64_schannel -G "Visual Studio 17 2022" -A x64 -DQUIC_TLS_LIB=schannel -DQUIC_BUILD_TEST=ON -DQUIC_BUILD_PERF=OFF -DQUIC_BUILD_TOOLS=OFF -DCMAKE_C_FLAGS=/wd28020 -DQUIC_OUTPUT_DIR="$PWD/artifacts/bin/windows/x64_Debug_schannel"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build/windows/x64_schannel --config Debug --target msquiccoretest --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Collect RETIRE_CONNECTION_ID coverage
+        shell: pwsh
+        run: scripts/run-gtest.ps1 -Path "artifacts/bin/windows/x64_Debug_schannel/msquiccoretest.exe" -Filter "*RetireCidTest*" -IsolationMode Batch -CodeCoverage -NoProgress
+      - name: Export coverage
+        shell: pwsh
+        run: |
+          $coverageFiles = Get-ChildItem -LiteralPath artifacts/coverage -Filter '*.cov'
+          if ($coverageFiles.Count -ne 1) { throw 'Expected one coverage file' }
+          & 'C:/Program Files/OpenCppCoverage/OpenCppCoverage.exe' --input_coverage $coverageFiles[0].FullName --export_type cobertura:coverage-windows.xml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-coverage-results
+          path: |
+            coverage-windows.xml
+            artifacts/coverage/*
+            artifacts/logs/msquiccoretest.exe/**/*
